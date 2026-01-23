@@ -39,6 +39,9 @@ import java.util.function.Consumer;
 
 /**
  * A {@link Communicator} implementation for Spotify.
+ *
+ * @author darraghd493
+ * @since 1.0.0
  */
 public class SpotifyCommunicator implements Communicator {
     private static final String CODE_VERIFIER_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";

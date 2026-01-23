@@ -9,7 +9,7 @@ import java.awt.image.BufferedImage;
  * A {@link Communicator} implementation for Windows media integration, using SystemMediaTransportControls.
  *
  * @author darraghd493
- * @since 0.0.1-alpha
+ * @since 1.0.0
  */
 public class JMTCCommunicator implements Communicator {
     // stub
