@@ -1,0 +1,525 @@
+package me.darragh.playingapi.communicator.impl;
+
+import lombok.Getter;
+import lombok.Setter;
+import me.darragh.playingapi.communicator.Communicator;
+import org.apache.hc.core5.http.ParseException;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+import se.michaelthelin.spotify.SpotifyApi;
+import se.michaelthelin.spotify.SpotifyHttpManager;
+import se.michaelthelin.spotify.exceptions.SpotifyWebApiException;
+import se.michaelthelin.spotify.model_objects.credentials.AuthorizationCodeCredentials;
+import se.michaelthelin.spotify.model_objects.miscellaneous.CurrentlyPlayingContext;
+import se.michaelthelin.spotify.model_objects.specification.Artist;
+import se.michaelthelin.spotify.model_objects.specification.ArtistSimplified;
+import se.michaelthelin.spotify.model_objects.specification.Track;
+import se.michaelthelin.spotify.requests.authorization.authorization_code.AuthorizationCodeUriRequest;
+import se.michaelthelin.spotify.requests.authorization.authorization_code.pkce.AuthorizationCodePKCERequest;
+import se.michaelthelin.spotify.requests.data.player.GetInformationAboutUsersCurrentPlaybackRequest;
+import se.michaelthelin.spotify.requests.data.tracks.GetTrackRequest;
+
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.IOException;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.Arrays;
+import java.util.Base64;
+import java.util.Objects;
+import java.util.Random;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
+
+/**
+ * A {@link Communicator} implementation for Spotify.
+ */
+public class SpotifyCommunicator implements Communicator {
+    private static final String CODE_VERIFIER_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+
+    private static final ExecutorService EXECUTOR = Executors.newCachedThreadPool();
+    private static final int CURRENTLY_PLAYING_POLL_INTERVAL_MS = 500;
+
+    @Setter
+    public static @Nullable Consumer<Exception> onExecutorException = null;
+
+    private final SpotifyApi api;
+    private final AuthorizationCodeUriRequest codeUri;
+
+    private final String codeVerifier = generateCodeVerifier();
+
+    @Getter
+    private @Nullable Track currentTrack;
+    @Getter
+    private @Nullable CurrentlyPlayingContext currentPlayingContext;
+
+    @Getter
+    private boolean active;
+    @Getter
+    private boolean authenticated;
+
+    @Getter
+    @Setter
+    private int tokenRefreshInterval = 2;
+
+    // Cached album image and the album ID it corresponds to
+    private volatile BufferedImage cachedAlbumImage = null;
+    private volatile String cachedAlbumId = null;
+
+    // Cached author (artist) image and the artist ID it corresponds to
+    private volatile BufferedImage cachedAuthorImage = null;
+    private volatile String cachedAuthorId = null;
+
+    // Pending futures for async fetches
+    private final ConcurrentHashMap<String, CompletableFuture<BufferedImage>> albumPending = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, CompletableFuture<BufferedImage>> authorPending = new ConcurrentHashMap<>();
+
+    // Async loading markers to prevent duplicate downloads
+    private volatile boolean albumLoading = false;
+    private volatile String albumDownloadForId = null;
+
+    private volatile boolean authorLoading = false;
+    private volatile String authorDownloadForId = null;
+
+    public SpotifyCommunicator(@NotNull String clientId, @NotNull String redirectUri) {
+        this.api = new SpotifyApi.Builder()
+                .setClientId(clientId)
+                .setRedirectUri(SpotifyHttpManager.makeUri(redirectUri))
+                .build();
+        String challengeHash = produceChallengeHash(this.codeVerifier);
+        this.codeUri = this.api.authorizationCodePKCEUri(challengeHash)
+                .scope("user-read-playback-state user-read-playback-position user-modify-playback-state user-read-currently-playing")
+                .build();
+    }
+
+    @Override
+    public @NotNull String getTitle() {
+        return this.currentTrack != null ? this.currentTrack.getName() : UNKNOWN_STRING;
+    }
+
+    @Override
+    public @NotNull String getAuthor() {
+        return this.currentTrack != null && this.currentTrack.getArtists().length > 0 ?
+                String.join(", ", Arrays.stream(this.currentTrack.getArtists())
+                        .map(ArtistSimplified::getName)
+                        .toArray(String[]::new)) : UNKNOWN_STRING;
+    }
+
+    @Override
+    public @NotNull String getAlbum() {
+        return this.currentTrack != null && this.currentTrack.getAlbum() != null ?
+                this.currentTrack.getAlbum().getName() : UNKNOWN_STRING;
+    }
+
+    @Override
+    public int getDurationSeconds() {
+        return this.currentTrack != null ? this.currentTrack.getDurationMs() / 1000 : UNKNOWN_DURATION;
+    }
+
+    @Override
+    public int getPlayedSeconds() {
+        return this.currentPlayingContext != null && this.currentPlayingContext.getProgress_ms() != null ?
+                this.currentPlayingContext.getProgress_ms() / 1000 : UNKNOWN_DURATION;
+    }
+
+    @Override
+    public BufferedImage getAuthorImageData() {
+        Track track = this.currentTrack;
+        if (track == null || track.getArtists() == null || track.getArtists().length == 0) return null;
+
+        String artistId = track.getArtists()[0].getId();
+        if (artistId == null) return null;
+
+        if (artistId.equals(this.cachedAuthorId) && this.cachedAuthorImage != null) {
+            return this.cachedAuthorImage;
+        }
+
+        if (artistId.equals(this.authorDownloadForId) && this.authorLoading) {
+            return null;
+        }
+
+        synchronized (this) {
+            if (artistId.equals(this.cachedAuthorId) && this.cachedAuthorImage != null) return this.cachedAuthorImage;
+            if (artistId.equals(this.authorDownloadForId) && this.authorLoading) return null;
+
+            this.authorDownloadForId = artistId;
+            this.authorLoading = true;
+
+            EXECUTOR.execute(() -> {
+                try {
+                    Artist artist = this.api.getArtist(artistId).build().execute();
+                    if (artist != null && artist.getImages() != null && artist.getImages().length > 0) {
+                        String url = artist.getImages()[0].getUrl(); // pick the first (usually largest)
+                        if (url != null && !url.isEmpty()) {
+                            BufferedImage image = ImageIO.read(new URL(url));
+                            if (image != null) {
+                                this.cachedAuthorImage = image;
+                                this.cachedAuthorId = artistId;
+                                CompletableFuture<BufferedImage> future = authorPending.remove(artistId);
+                                if (future != null) future.complete(image);
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    if (onExecutorException != null) onExecutorException.accept(e);
+                    CompletableFuture<BufferedImage> future = authorPending.remove(artistId);
+                    if (future != null) future.completeExceptionally(e);
+                } finally {
+                    if (artistId.equals(this.authorDownloadForId)) {
+                        this.authorLoading = false;
+                        this.authorDownloadForId = null;
+                    }
+                }
+            });
+
+            return null;
+        }
+    }
+
+    @Override
+    public boolean isAuthorImageDataAvailable() {
+        Track track = this.currentTrack;
+        if (track == null || track.getArtists() == null || track.getArtists().length == 0) return false;
+
+        String artistId = track.getArtists()[0].getId();
+        if (artistId == null) return false;
+
+        if (artistId.equals(this.cachedAuthorId) && this.cachedAuthorImage != null) return true;
+        if (artistId.equals(this.authorDownloadForId) && this.authorLoading) return false;
+
+        synchronized (this) {
+            if (artistId.equals(this.cachedAuthorId) && this.cachedAuthorImage != null) return true;
+            if (artistId.equals(this.authorDownloadForId) && this.authorLoading) return false;
+
+            this.authorDownloadForId = artistId;
+            this.authorLoading = true;
+
+            EXECUTOR.execute(() -> {
+                try {
+                    Artist artist = this.api.getArtist(artistId).build().execute();
+                    if (artist != null && artist.getImages() != null && artist.getImages().length > 0) {
+                        String url = artist.getImages()[0].getUrl();
+                        if (url != null && !url.isEmpty()) {
+                            BufferedImage image = ImageIO.read(new URL(url));
+                            if (image != null) {
+                                this.cachedAuthorImage = image;
+                                this.cachedAuthorId = artistId;
+                                CompletableFuture<BufferedImage> future = authorPending.remove(artistId);
+                                if (future != null) future.complete(image);
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    if (onExecutorException != null) onExecutorException.accept(e);
+                    CompletableFuture<BufferedImage> future = authorPending.remove(artistId);
+                    if (future != null) future.completeExceptionally(e);
+                } finally {
+                    if (artistId.equals(this.authorDownloadForId)) {
+                        this.authorLoading = false;
+                        this.authorDownloadForId = null;
+                    }
+                }
+            });
+
+            return false;
+        }
+    }
+
+    @Override
+    public BufferedImage getAlbumImageData() {
+        Track track = this.currentTrack;
+        if (track == null || track.getAlbum() == null || track.getAlbum().getId() == null) return null;
+
+        String albumId = track.getAlbum().getId();
+        if (albumId.equals(this.cachedAlbumId) && this.cachedAlbumImage != null) {
+            return this.cachedAlbumImage;
+        }
+
+        if (albumId.equals(this.albumDownloadForId) && this.albumLoading) return null;
+
+        synchronized (this) {
+            if (albumId.equals(this.cachedAlbumId) && this.cachedAlbumImage != null) return this.cachedAlbumImage;
+            if (albumId.equals(this.albumDownloadForId) && this.albumLoading) return null;
+
+            this.albumDownloadForId = albumId;
+            this.albumLoading = true;
+
+            EXECUTOR.execute(() -> {
+                try {
+                    if (track.getAlbum().getImages() != null && track.getAlbum().getImages().length > 0) {
+                        String url = track.getAlbum().getImages()[0].getUrl();
+                        if (url != null && !url.isEmpty()) {
+                            BufferedImage image = ImageIO.read(new URL(url));
+                            if (image != null) {
+                                this.cachedAlbumImage = image;
+                                this.cachedAlbumId = albumId;
+                                CompletableFuture<BufferedImage> future = this.albumPending.remove(albumId);
+                                if (future != null) future.complete(image);
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    if (onExecutorException != null) onExecutorException.accept(e);
+                    CompletableFuture<BufferedImage> f = this.albumPending.remove(albumId);
+                    if (f != null) f.completeExceptionally(e);
+                } finally {
+                    if (albumId.equals(this.albumDownloadForId)) {
+                        this.albumLoading = false;
+                        this.albumDownloadForId = null;
+                    }
+                }
+            });
+
+            return null;
+        }
+    }
+
+    @Override
+    public boolean isAlbumImageDataAvailable() {
+        Track track = this.currentTrack;
+        if (track == null || track.getAlbum() == null) return false;
+
+        String albumId = track.getAlbum().getId();
+        if (albumId != null && albumId.equals(this.cachedAlbumId) && this.cachedAlbumImage != null) return true;
+        if (albumId != null && albumId.equals(this.albumDownloadForId) && this.albumLoading) return false;
+
+        synchronized (this) {
+            if (albumId != null && albumId.equals(this.cachedAlbumId) && this.cachedAlbumImage != null) return true;
+            if (albumId != null && albumId.equals(this.albumDownloadForId) && this.albumLoading) return false;
+
+            if (albumId == null) return false;
+
+            this.albumDownloadForId = albumId;
+            this.albumLoading = true;
+
+            EXECUTOR.execute(() -> {
+                try {
+                    if (track.getAlbum().getImages() != null && track.getAlbum().getImages().length > 0) {
+                        String url = track.getAlbum().getImages()[0].getUrl();
+                        if (url != null && !url.isEmpty()) {
+                            BufferedImage image = ImageIO.read(new URL(url));
+                            if (image != null) {
+                                this.cachedAlbumImage = image;
+                                this.cachedAlbumId = albumId;
+                                CompletableFuture<BufferedImage> future = this.albumPending.remove(albumId);
+                                if (future != null) future.complete(image);
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    if (onExecutorException != null) onExecutorException.accept(e);
+                    CompletableFuture<BufferedImage> future = this.albumPending.remove(albumId);
+                    if (future != null) future.completeExceptionally(e);
+                } finally {
+                    if (albumId.equals(this.albumDownloadForId)) {
+                        this.albumLoading = false;
+                        this.albumDownloadForId = null;
+                    }
+                }
+            });
+
+            return false;
+        }
+    }
+
+    @Override
+    public void start() {
+        // TODO
+    }
+
+    @Override
+    public void stop() {
+        this.active = false;
+        this.authenticated = false;
+
+        synchronized (this) {
+            this.cachedAlbumImage = null;
+            this.cachedAlbumId = null;
+            this.cachedAuthorImage = null;
+            this.cachedAuthorId = null;
+
+            this.albumLoading = false;
+            this.albumDownloadForId = null;
+            this.authorLoading = false;
+            this.authorDownloadForId = null;
+        }
+
+        Exception stopException = new IllegalStateException("Communicator stopped");
+        this.albumPending.forEach((id, f) -> f.completeExceptionally(stopException));
+        this.authorPending.forEach((id, f) -> f.completeExceptionally(stopException));
+        this.albumPending.clear();
+        this.authorPending.clear();
+    }
+
+    /**
+     * Handles the provided callback code from the Spotify authorization flow.
+     *
+     * @param code the authorization code received from the Spotify callback.
+     * @throws IOException The method may throw an IOException.
+     * @throws ParseException The method may throw a ParseException.
+     * @throws SpotifyWebApiException The method may throw a SpotifyWebApiException.
+     */
+    public void provideCallbackCode(@NotNull String code) throws IOException, ParseException, SpotifyWebApiException {
+        if (this.authenticated) {
+            throw new IllegalStateException("Already authenticated");
+        }
+
+        AuthorizationCodePKCERequest pkceRequest = this.api.authorizationCodePKCE(code, this.codeVerifier).build();
+        AuthorizationCodeCredentials credentialsRequest = pkceRequest.execute();
+
+        this.api.setAccessToken(credentialsRequest.getAccessToken());
+        this.api.setRefreshToken(credentialsRequest.getRefreshToken());
+
+        this.tokenRefreshInterval = credentialsRequest.getExpiresIn();
+        this.active = true;
+        this.authenticated = true;
+
+        EXECUTOR.execute(new Thread(() -> {
+            while (this.active && !Thread.currentThread().isInterrupted()) {
+                try {
+                    TimeUnit.SECONDS.sleep(this.tokenRefreshInterval - 2);
+
+                    AuthorizationCodeCredentials refreshRequest = this.api.authorizationCodePKCERefresh().build().execute();
+                    this.api.setAccessToken(refreshRequest.getAccessToken());
+                    this.api.setRefreshToken(refreshRequest.getRefreshToken());
+                    this.tokenRefreshInterval = refreshRequest.getExpiresIn();
+                } catch (Exception e) {
+                    if (onExecutorException != null) {
+                        onExecutorException.accept(e);
+                    }
+                }
+            }
+        }, "access-token-refresh-thread"));
+
+        EXECUTOR.execute(new Thread(() -> {
+            while (this.active && !Thread.currentThread().isInterrupted()) {
+                try {
+                    TimeUnit.MILLISECONDS.sleep(CURRENTLY_PLAYING_POLL_INTERVAL_MS);
+                    GetInformationAboutUsersCurrentPlaybackRequest playbackRequest = this.api.getInformationAboutUsersCurrentPlayback().build();
+
+                    CurrentlyPlayingContext currentlyPlaying = playbackRequest.execute();
+
+                    String trackId = currentlyPlaying.getItem().getId();
+                    GetTrackRequest trackRequest = this.api.getTrack(trackId).build();
+
+                    Track freshlyFetched = trackRequest.execute();
+                    if (!Objects.equals(freshlyFetched != null ? freshlyFetched.getId() : null, this.currentTrack != null ? this.currentTrack.getId() : null)) {
+                        this.onTrackChanged(freshlyFetched);
+                    }
+                    this.currentTrack = freshlyFetched;
+                    this.currentPlayingContext = currentlyPlaying;
+                } catch (Exception e) {
+                    if (onExecutorException != null) {
+                        onExecutorException.accept(e);
+                    }
+                }
+            }
+        }, "current-playback-info-thread"));
+    }
+
+    /**
+     * Fetches the album image asynchronously.
+     *
+     * @return A {@link CompletableFuture} that will complete with the album image {@link BufferedImage}, or null if not available.
+     */
+    public CompletableFuture<BufferedImage> fetchAlbumImageAsync() {
+        Track track = this.currentTrack;
+        if (track == null || track.getAlbum() == null || track.getAlbum().getId() == null) return CompletableFuture.completedFuture(null);
+
+        String albumId = track.getAlbum().getId();
+        if (albumId.equals(this.cachedAlbumId) && this.cachedAlbumImage != null) return CompletableFuture.completedFuture(this.cachedAlbumImage);
+
+        CompletableFuture<BufferedImage> existing = albumPending.get(albumId);
+        if (existing != null) return existing;
+
+        CompletableFuture<BufferedImage> future = new CompletableFuture<>();
+        CompletableFuture<BufferedImage> previous = albumPending.putIfAbsent(albumId, future);
+        if (previous != null) return previous;
+
+        this.isAlbumImageDataAvailable();
+        return future;
+    }
+
+    /**
+     * Fetches the author image asynchronously.
+     *
+     * @return A {@link CompletableFuture} that will complete with the author image {@link BufferedImage}, or null if not available.
+     */
+    public CompletableFuture<BufferedImage> fetchAuthorImageAsync() {
+        Track track = this.currentTrack;
+        if (track == null || track.getArtists() == null || track.getArtists().length == 0) return CompletableFuture.completedFuture(null);
+        String artistId = track.getArtists()[0].getId();
+        if (artistId == null) return CompletableFuture.completedFuture(null);
+        if (artistId.equals(this.cachedAuthorId) && this.cachedAuthorImage != null) return CompletableFuture.completedFuture(this.cachedAuthorImage);
+
+        CompletableFuture<BufferedImage> existing = authorPending.get(artistId);
+        if (existing != null) return existing;
+
+        CompletableFuture<BufferedImage> future = new CompletableFuture<>();
+        CompletableFuture<BufferedImage> previous = authorPending.putIfAbsent(artistId, future);
+        if (previous != null) return previous;
+
+        this.isAuthorImageDataAvailable();
+        return future;
+    }
+
+    /**
+     * Generates a random code verifier string.
+     *
+     * @return A randomly generated code verifier.
+     */
+    private static @NotNull String generateCodeVerifier() {
+        return new Random().ints(43, 0, CODE_VERIFIER_CHARS.length())
+                .mapToObj(i -> String.valueOf(CODE_VERIFIER_CHARS.charAt(i)))
+                .reduce("", String::concat);
+    }
+
+    /**
+     * Produces a challenge hash from the provided code verifier.
+     *
+     * @param codeVerifier The code verifier to hash.
+     * @return The resulting challenge hash.
+     */
+    private static @NotNull String produceChallengeHash(@NotNull String codeVerifier) {
+        byte[] bytes = codeVerifier.getBytes(StandardCharsets.UTF_8);
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            return Base64.getUrlEncoder().encodeToString(digest.digest(bytes)).replace("=", "");
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException("SHA-256 algorithm not found", e);
+        }
+    }
+
+    /**
+     * Handles track change events.
+     *
+     * @param newTrack The new track that has been changed to.
+     */
+    private synchronized void onTrackChanged(Track newTrack) {
+        String newAlbumId = newTrack != null && newTrack.getAlbum() != null ? newTrack.getAlbum().getId() : null;
+        String newArtistId = null;
+        if (newTrack != null && newTrack.getArtists() != null && newTrack.getArtists().length > 0) newArtistId = newTrack.getArtists()[0].getId();
+
+        if (this.cachedAlbumId != null && !Objects.equals(this.cachedAlbumId, newAlbumId)) {
+            this.cachedAlbumImage = null;
+            String old = this.cachedAlbumId;
+            this.cachedAlbumId = null;
+            CompletableFuture<BufferedImage> future = this.albumPending.remove(old);
+            if (future != null) future.complete(null);
+        }
+
+        if (this.cachedAuthorId != null && !Objects.equals(this.cachedAuthorId, newArtistId)) {
+            this.cachedAuthorImage = null;
+            String old = this.cachedAuthorId;
+            this.cachedAuthorId = null;
+            CompletableFuture<BufferedImage> future = this.authorPending.remove(old);
+            if (future != null) future.complete(null);
+        }
+    }
+}
