@@ -6,14 +6,13 @@ plugins {
 // Toolchains:
 java {
     toolchain {
-        languageVersion.set(JavaLanguageVersion.of(17))
+        languageVersion.set(JavaLanguageVersion.of(21))
     }
 }
 
 // Dependencies:
 repositories {
     mavenCentral()
-    maven { url = uri("https://jitpack.io") }
 }
 
 val annotationImplementation: Configuration by configurations.creating {
@@ -25,7 +24,7 @@ val annotationImplementation: Configuration by configurations.creating {
 
 dependencies {
     implementation("se.michaelthelin.spotify:spotify-web-api-java:9.4.0")
-    implementation("io.github.selemba1000:JavaMediaTranportControls:0.0.3")
+    implementation("net.java.dev.jna:jna:5.18.1")
 
     compileOnly("org.jetbrains:annotations:26.0.2")
     annotationImplementation("org.projectlombok:lombok:1.18.36")

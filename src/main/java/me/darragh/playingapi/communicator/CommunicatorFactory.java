@@ -2,6 +2,7 @@ package me.darragh.playingapi.communicator;
 
 import lombok.experimental.UtilityClass;
 import me.darragh.playingapi.communicator.impl.SpotifyCommunicator;
+import me.darragh.playingapi.communicator.impl.smtc.SMTCCommunicator;
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -12,6 +13,15 @@ import org.jetbrains.annotations.NotNull;
  */
 @UtilityClass
 public final class CommunicatorFactory {
+    /**
+     * Creates a new {@link SMTCCommunicator} instance.
+     *
+     * @return A new {@link SMTCCommunicator} instance.
+     */
+    public static SMTCCommunicator createSMTCCommunicator() {
+        return new SMTCCommunicator();
+    }
+
     /**
      * Creates a new {@link SpotifyCommunicator} instance.
      *

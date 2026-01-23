@@ -27,7 +27,7 @@ public interface Communicator {
      *
      * @return The author of the media.
      */
-    @NotNull String getAuthor();
+    @NotNull String getArtist();
 
     /**
      * Gets the album of the currently playing media.

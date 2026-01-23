@@ -107,7 +107,7 @@ public class SpotifyCommunicator implements Communicator {
     }
 
     @Override
-    public @NotNull String getAuthor() {
+    public @NotNull String getArtist() {
         return this.currentTrack != null && this.currentTrack.getArtists().length > 0 ?
                 String.join(", ", Arrays.stream(this.currentTrack.getArtists())
                         .map(ArtistSimplified::getName)
@@ -358,6 +358,15 @@ public class SpotifyCommunicator implements Communicator {
         this.authorPending.forEach((id, f) -> f.completeExceptionally(stopException));
         this.albumPending.clear();
         this.authorPending.clear();
+    }
+
+    /**
+     * Gets the authorisation code URI for Spotify authentication.
+     *
+     * @return The authorisation code URI as a string.
+     */
+    public String getCodeUri() {
+        return this.codeUri.execute().toString();
     }
 
     /**
