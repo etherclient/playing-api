@@ -1,8 +1,9 @@
+import me.darragh.playingapi.communicator.CommunicatorFactory;
 import me.darragh.playingapi.communicator.impl.smtc.SMTCCommunicator;
 
-public class Test {
+public class SMTCDemo {
     public static void main(String[] args) {
-        SMTCCommunicator communicator = new SMTCCommunicator();
+        SMTCCommunicator communicator = CommunicatorFactory.createSMTCCommunicator();
         System.out.println(communicator.getTitle());
         System.out.println(communicator.getArtist());
         System.out.println(communicator.getAlbum());

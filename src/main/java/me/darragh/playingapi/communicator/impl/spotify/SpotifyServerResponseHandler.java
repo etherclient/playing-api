@@ -9,6 +9,7 @@ import org.jetbrains.annotations.NotNull;
  * @author darraghd493
  * @since 1.0.0
  */
+@FunctionalInterface
 public interface SpotifyServerResponseHandler {
     /**
      * Handles the response from the Spotify OAuth page.

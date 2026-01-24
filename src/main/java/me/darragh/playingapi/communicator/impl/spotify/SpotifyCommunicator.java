@@ -23,7 +23,6 @@ import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.net.URI;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -310,14 +309,14 @@ public class SpotifyCommunicator implements Communicator {
     }
 
     /**
-     * Handles the provided callback code from the Spotify authorization flow.
+     * Handles the provided callback code from the Spotify authorisation flow.
      *
-     * @param code the authorization code received from the Spotify callback.
+     * @param code the authorisation code received from the Spotify callback.
      * @throws IOException The method may throw an IOException.
      * @throws ParseException The method may throw a ParseException.
      * @throws SpotifyWebApiException The method may throw a SpotifyWebApiException.
      */
-    public void provideCallbackCode(@NotNull String code) throws IOException, ParseException, SpotifyWebApiException {
+    public void handleAuthorisationCode(@NotNull String code) throws IOException, ParseException, SpotifyWebApiException {
         if (this.authenticated) {
             throw new IllegalStateException("Already authenticated");
         }
