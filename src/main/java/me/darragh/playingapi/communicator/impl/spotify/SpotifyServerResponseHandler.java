@@ -14,7 +14,7 @@ public interface SpotifyServerResponseHandler {
      * Handles the response from the Spotify OAuth page.
      *
      * @param exchange The HTTP exchange.
-     * @return Whether the response was handled successfully.
+     * @return The state of the response.
      */
-    boolean handleResponse(@NotNull HttpExchange exchange);
+    SpotifyServerResponseState handleResponse(@NotNull HttpExchange exchange);
 }

@@ -12,17 +12,24 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+/**
+ * A simple HTTP server handler for Spotify OAuth authentication.
+ *
+ * @author darraghd493
+ * @since 1.0.0
+ */
 public class SpotifyServerHandler implements HttpHandler {
     private static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor();
 
+    private final @NotNull SpotifyCommunicator communicator;
     private final @NotNull SpotifyServerPageHandler pageHandler;
     private final @NotNull SpotifyServerResponseHandler responseHandler;
 
     private final int port;
-
     private HttpServer server;
 
-    public SpotifyServerHandler(@NotNull SpotifyServerPageHandler pageHandler, @NotNull SpotifyServerResponseHandler responseHandler, int port) {
+    public SpotifyServerHandler(@NotNull SpotifyCommunicator communicator, @NotNull SpotifyServerPageHandler pageHandler, @NotNull SpotifyServerResponseHandler responseHandler, int port) {
+        this.communicator = communicator;
         this.pageHandler = pageHandler;
         this.responseHandler = responseHandler;
         this.port = port;
@@ -36,15 +43,15 @@ public class SpotifyServerHandler implements HttpHandler {
             return;
         }
 
-        boolean handled = this.responseHandler.handleResponse(exchange);
-        String page;
-        if (handled) {
-            page = this.pageHandler.generatePage("Authentication successful! You can close this window.");
-        } else {
-            page = this.pageHandler.generatePage("Authentication failed! Please try again.");
+        SpotifyServerResponseState state = SpotifyServerResponseState.INVALID;
+
+        try {
+            state = this.responseHandler.handleResponse(exchange);
+        } catch (Exception ignored) {
         }
 
-        standardWrite(exchange, page);
+        this.standardWrite(exchange, this.pageHandler.generatePage(state.getDefaultMessage()));
+        this.stop();
     }
 
     /**
@@ -79,12 +86,6 @@ public class SpotifyServerHandler implements HttpHandler {
 
     /**
      * Writes the response to the given request in a standard way.
-     * <p>
-     * Performs:
-     * - status code of 200
-     * - indicates the content type of text/html
-     * - indicates the charset of utf-8
-     * - writes the given string to the response body in utf-8
      *
      * @param request The request to write to.
      * @param string The string to write.
