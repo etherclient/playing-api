@@ -4,6 +4,7 @@ import me.darragh.playingapi.communicator.impl.spotify.SpotifyCommunicator;
 import me.darragh.playingapi.communicator.impl.spotify.SpotifyServerHandler;
 import me.darragh.playingapi.communicator.impl.spotify.SpotifyServerResponseState;
 
+import javax.swing.*;
 import java.io.IOException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -23,6 +24,10 @@ public class SpotifyDemo {
                         System.out.println("Authorisation Code: " + code);
                         try {
                             communicator.handleAuthorisationCode(code);
+
+                            SwingUtilities.invokeLater(() ->
+                                    new ImageViewer(communicator)
+                            );
 
                             EXECUTOR.execute(() -> {
                                 while (true) {

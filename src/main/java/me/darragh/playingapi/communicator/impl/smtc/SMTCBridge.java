@@ -3,7 +3,7 @@ package me.darragh.playingapi.communicator.impl.smtc;
 import com.sun.jna.Library;
 import com.sun.jna.Native;
 import com.sun.jna.Pointer;
-import com.sun.jna.WString;
+import com.sun.jna.ptr.IntByReference;
 import me.darragh.playingapi.communicator.Communicator;
 
 /**
@@ -44,7 +44,7 @@ interface SMTCBridge extends Library {
     /**
      * @see Communicator#getAlbumImageData()
      */
-    Pointer getAlbumImage(int[] size);
+    Pointer getAlbumImage(IntByReference size);
 
     /**
      * @see Communicator#isAlbumImageDataAvailable()
@@ -52,14 +52,14 @@ interface SMTCBridge extends Library {
     boolean isAlbumImageAvailable();
 
     /**
-     * @see Communicator#getAuthorImageData()
+     * @see Communicator#getArtistImageData()
      */
-    Pointer getAuthorImage(int[] size);
+    Pointer getArtistImage(IntByReference size);
 
     /**
-     * @see Communicator#isAuthorImageDataAvailable()
+     * @see Communicator#isArtistImageDataAvailable()
      */
-    boolean isAuthorImageAvailable();
+    boolean isArtistImageAvailable();
 
     /**
      * Frees memory allocated for a string or image.
@@ -72,7 +72,9 @@ interface SMTCBridge extends Library {
     default String getTitleString() {
         Pointer p = getTitle();
         if (p == null) return "";
-        return p.getWideString(0); // do not call freeMemory
+        String s = p.getWideString(0);
+        freeMemory(p);
+        return s;
     }
 
     default String getArtistString() {

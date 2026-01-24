@@ -1,11 +1,15 @@
 package me.darragh.playingapi.communicator.impl.smtc;
 
 import com.sun.jna.Pointer;
+import com.sun.jna.ptr.IntByReference;
 import me.darragh.playingapi.communicator.Communicator;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
+import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
-import java.io.File;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
 
 /**
  * A communicator implementation that interacts with the System Media Transport Controls (SMTC) on Windows.
@@ -48,27 +52,27 @@ public final class SMTCCommunicator implements Communicator {
     }
 
     @Override
+    public BufferedImage getArtistImageData() {
+        IntByReference sizeRef = new IntByReference();
+        Pointer pointer = this.bridge.getArtistImage(sizeRef);
+        return this.getBufferedImage(sizeRef, pointer);
+    }
+
+    @Override
+    public boolean isArtistImageDataAvailable() {
+        return this.bridge.isArtistImageAvailable();
+    }
+
+    @Override
     public BufferedImage getAlbumImageData() {
-        int[] size = new int[2];
-        Pointer pointer = this.bridge.getAlbumImage(size);
-        return toBufferedImage(pointer, size);
+        IntByReference sizeRef = new IntByReference();
+        Pointer pointer = this.bridge.getAlbumImage(sizeRef);
+        return this.getBufferedImage(sizeRef, pointer);
     }
 
     @Override
     public boolean isAlbumImageDataAvailable() {
         return this.bridge.isAlbumImageAvailable();
-    }
-
-    @Override
-    public BufferedImage getAuthorImageData() {
-        int[] size = new int[2];
-        Pointer pointer = this.bridge.getAuthorImage(size);
-        return toBufferedImage(pointer, size);
-    }
-
-    @Override
-    public boolean isAuthorImageDataAvailable() {
-        return this.bridge.isAuthorImageAvailable();
     }
 
     @Override
@@ -81,23 +85,18 @@ public final class SMTCCommunicator implements Communicator {
         // no-op
     }
 
-    private BufferedImage toBufferedImage(Pointer pointer, int[] size) {
-        if (pointer == null || size == null || size.length < 2 || size[0] <= 0 || size[1] <= 0) return null;
-        int width = size[0], height = size[1];
-        byte[] bytes = pointer.getByteArray(0, width * height * 4); // RGBA
-        BufferedImage img = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
-        int idx = 0;
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                int r = bytes[idx++] & 0xFF;
-                int g = bytes[idx++] & 0xFF;
-                int b = bytes[idx++] & 0xFF;
-                int a = bytes[idx++] & 0xFF;
-                int argb = (a << 24) | (r << 16) | (g << 8) | b;
-                img.setRGB(x, y, argb);
-            }
+    @Nullable
+    private BufferedImage getBufferedImage(IntByReference sizeRef, Pointer p) {
+        if (p == null) return null;
+
+        int size = sizeRef.getValue();
+        byte[] bytes = p.getByteArray(0, size);
+        bridge.freeMemory(p);
+
+        try {
+            return ImageIO.read(new ByteArrayInputStream(bytes));
+        } catch (IOException e) {
+            return null;
         }
-        this.bridge.freeMemory(pointer);
-        return img;
     }
 }

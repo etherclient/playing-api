@@ -64,14 +64,14 @@ public interface Communicator {
      *
      * @return The author image data, or null if not available.
      */
-    @Nullable BufferedImage getAuthorImageData();
+    @Nullable BufferedImage getArtistImageData();
 
     /**
      * Checks if author image data is available.
      *
      * @return True if author image data is available, false otherwise.
      */
-    boolean isAuthorImageDataAvailable();
+    boolean isArtistImageDataAvailable();
 
     /**
      * Gets the image data of the album of the currently playing media.

@@ -128,7 +128,7 @@ public class SpotifyCommunicator implements Communicator {
     }
 
     @Override
-    public BufferedImage getAuthorImageData() {
+    public BufferedImage getArtistImageData() {
         Track track = this.currentTrack;
         if (track == null || track.getArtists() == null || track.getArtists().length == 0) return null;
 
@@ -182,7 +182,7 @@ public class SpotifyCommunicator implements Communicator {
     }
 
     @Override
-    public boolean isAuthorImageDataAvailable() {
+    public boolean isArtistImageDataAvailable() {
         Track track = this.currentTrack;
         if (track == null || track.getArtists() == null || track.getArtists().length == 0) return false;
 
@@ -272,7 +272,7 @@ public class SpotifyCommunicator implements Communicator {
 
     @Override
     public void start() {
-        // TODO
+        // no-op
     }
 
     @Override
@@ -416,7 +416,7 @@ public class SpotifyCommunicator implements Communicator {
         CompletableFuture<BufferedImage> previous = this.authorPending.putIfAbsent(artistId, future);
         if (previous != null) return previous;
 
-        this.isAuthorImageDataAvailable();
+        this.isArtistImageDataAvailable();
         return future;
     }
 

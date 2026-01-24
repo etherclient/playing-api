@@ -9,7 +9,6 @@ using namespace winrt;
 using namespace Windows::Media::Control;
 using namespace Windows::Storage::Streams;
 
-// persisted manager + session
 static GlobalSystemMediaTransportControlsSessionManager g_mgr{ nullptr };
 static GlobalSystemMediaTransportControlsSession g_sess{ nullptr };
 
@@ -31,6 +30,23 @@ static wchar_t* CopyHString(hstring const& s) {
     wchar_t* mem = (wchar_t*)malloc(bytes);
     memcpy(mem, s.c_str(), bytes);
     return mem;
+}
+
+static void* ReadImage(IRandomAccessStreamReference const& ref, int* size) {
+    *size = 0;
+    if (!ref) return nullptr;
+    try {
+        auto stream = ref.OpenReadAsync().get();
+        uint32_t len = (uint32_t)stream.Size();
+        Buffer buffer(len);
+        stream.ReadAsync(buffer, len, InputStreamOptions::None).get();
+        void* mem = malloc(len);
+        memcpy(mem, buffer.data(), len);
+        *size = (int)len;
+        return mem;
+    } catch (...) {
+        return nullptr;
+    }
 }
 
 // strings
@@ -92,15 +108,22 @@ int __cdecl getDurationSeconds() {
     return 0;
 }
 
-// image reading
-static void* ReadImage(IRandomAccessStreamReference const& ref, int* size) {
-    *size = 0;
-    if (!ref) return nullptr;
+extern "C" __declspec(dllexport)
+void* __cdecl getAlbumImage(int* size) {
+    InitOnce();
+    if (!g_sess || !size) return nullptr;
+
     try {
-        auto stream = ref.OpenReadAsync().get();
+        auto props = g_sess.TryGetMediaPropertiesAsync().get();
+        auto thumb = props.Thumbnail();
+        if (!thumb) return nullptr;
+
+        auto stream = thumb.OpenReadAsync().get();
         uint32_t len = (uint32_t)stream.Size();
+
         Buffer buffer(len);
         stream.ReadAsync(buffer, len, InputStreamOptions::None).get();
+
         void* mem = malloc(len);
         memcpy(mem, buffer.data(), len);
         *size = (int)len;
@@ -108,22 +131,6 @@ static void* ReadImage(IRandomAccessStreamReference const& ref, int* size) {
     } catch (...) {
         return nullptr;
     }
-}
-
-extern "C" __declspec(dllexport)
-void* __cdecl getAlbumImage(int* size) {
-    InitOnce();
-    if (!g_sess) return nullptr;
-    try {
-        auto props = g_sess.TryGetMediaPropertiesAsync().get();
-        return ReadImage(props.Thumbnail(), size);
-    } catch (...) { }
-    return nullptr;
-}
-
-extern "C" __declspec(dllexport)
-void* __cdecl getAuthorImage(int* size) {
-    return getAlbumImage(size);
 }
 
 extern "C" __declspec(dllexport)
@@ -138,7 +145,12 @@ bool __cdecl isAlbumImageAvailable() {
 }
 
 extern "C" __declspec(dllexport)
-bool __cdecl isAuthorImageAvailable() {
+void* __cdecl getArtistImage(int* size) {
+    return getAlbumImage(size);
+}
+
+extern "C" __declspec(dllexport)
+bool __cdecl isArtistImageAvailable() {
     return isAlbumImageAvailable();
 }
 
