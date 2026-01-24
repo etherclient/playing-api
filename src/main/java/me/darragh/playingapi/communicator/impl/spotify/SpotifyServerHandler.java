@@ -3,6 +3,7 @@ package me.darragh.playingapi.communicator.impl.spotify;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
+import lombok.RequiredArgsConstructor;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
@@ -18,22 +19,15 @@ import java.util.concurrent.Executors;
  * @author darraghd493
  * @since 1.0.0
  */
+@RequiredArgsConstructor
 public class SpotifyServerHandler implements HttpHandler {
     private static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor();
 
-    private final @NotNull SpotifyCommunicator communicator;
     private final @NotNull SpotifyServerPageHandler pageHandler;
     private final @NotNull SpotifyServerResponseHandler responseHandler;
 
     private final int port;
     private HttpServer server;
-
-    public SpotifyServerHandler(@NotNull SpotifyCommunicator communicator, @NotNull SpotifyServerPageHandler pageHandler, @NotNull SpotifyServerResponseHandler responseHandler, int port) {
-        this.communicator = communicator;
-        this.pageHandler = pageHandler;
-        this.responseHandler = responseHandler;
-        this.port = port;
-    }
 
     @Override
     public void handle(HttpExchange exchange) throws IOException {
