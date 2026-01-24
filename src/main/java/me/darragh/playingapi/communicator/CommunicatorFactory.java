@@ -1,7 +1,7 @@
 package me.darragh.playingapi.communicator;
 
 import lombok.experimental.UtilityClass;
-import me.darragh.playingapi.communicator.impl.SpotifyCommunicator;
+import me.darragh.playingapi.communicator.impl.spotify.SpotifyCommunicator;
 import me.darragh.playingapi.communicator.impl.smtc.SMTCCommunicator;
 import org.jetbrains.annotations.NotNull;
 

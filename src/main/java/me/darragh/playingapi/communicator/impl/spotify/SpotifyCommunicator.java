@@ -1,4 +1,4 @@
-package me.darragh.playingapi.communicator.impl;
+package me.darragh.playingapi.communicator.impl.spotify;
 
 import lombok.Getter;
 import lombok.Setter;
@@ -22,6 +22,7 @@ import se.michaelthelin.spotify.requests.data.tracks.GetTrackRequest;
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -71,19 +72,15 @@ public class SpotifyCommunicator implements Communicator {
     @Setter
     private int tokenRefreshInterval = 2;
 
-    // Cached album image and the album ID it corresponds to
     private volatile BufferedImage cachedAlbumImage = null;
     private volatile String cachedAlbumId = null;
 
-    // Cached author (artist) image and the artist ID it corresponds to
     private volatile BufferedImage cachedAuthorImage = null;
     private volatile String cachedAuthorId = null;
 
-    // Pending futures for async fetches
     private final ConcurrentHashMap<String, CompletableFuture<BufferedImage>> albumPending = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, CompletableFuture<BufferedImage>> authorPending = new ConcurrentHashMap<>();
 
-    // Async loading markers to prevent duplicate downloads
     private volatile boolean albumLoading = false;
     private volatile String albumDownloadForId = null;
 
@@ -160,7 +157,7 @@ public class SpotifyCommunicator implements Communicator {
                     if (artist != null && artist.getImages() != null && artist.getImages().length > 0) {
                         String url = artist.getImages()[0].getUrl(); // pick the first (usually largest)
                         if (url != null && !url.isEmpty()) {
-                            BufferedImage image = ImageIO.read(new URL(url));
+                            BufferedImage image = ImageIO.read(URI.create(url).toURL());
                             if (image != null) {
                                 this.cachedAuthorImage = image;
                                 this.cachedAuthorId = artistId;
@@ -196,42 +193,16 @@ public class SpotifyCommunicator implements Communicator {
         if (artistId.equals(this.cachedAuthorId) && this.cachedAuthorImage != null) return true;
         if (artistId.equals(this.authorDownloadForId) && this.authorLoading) return false;
 
-        synchronized (this) {
-            if (artistId.equals(this.cachedAuthorId) && this.cachedAuthorImage != null) return true;
-            if (artistId.equals(this.authorDownloadForId) && this.authorLoading) return false;
-
-            this.authorDownloadForId = artistId;
-            this.authorLoading = true;
-
-            EXECUTOR.execute(() -> {
-                try {
-                    Artist artist = this.api.getArtist(artistId).build().execute();
-                    if (artist != null && artist.getImages() != null && artist.getImages().length > 0) {
-                        String url = artist.getImages()[0].getUrl();
-                        if (url != null && !url.isEmpty()) {
-                            BufferedImage image = ImageIO.read(new URL(url));
-                            if (image != null) {
-                                this.cachedAuthorImage = image;
-                                this.cachedAuthorId = artistId;
-                                CompletableFuture<BufferedImage> future = authorPending.remove(artistId);
-                                if (future != null) future.complete(image);
-                            }
-                        }
-                    }
-                } catch (Exception e) {
-                    if (onExecutorException != null) onExecutorException.accept(e);
-                    CompletableFuture<BufferedImage> future = authorPending.remove(artistId);
-                    if (future != null) future.completeExceptionally(e);
-                } finally {
-                    if (artistId.equals(this.authorDownloadForId)) {
-                        this.authorLoading = false;
-                        this.authorDownloadForId = null;
-                    }
-                }
-            });
-
-            return false;
+        try {
+            Artist artist = this.api.getArtist(artistId).build().execute();
+            if (artist != null && artist.getImages() != null && artist.getImages().length > 0) {
+                String url = artist.getImages()[0].getUrl();
+                return url != null && !url.isEmpty();
+            }
+        } catch (Exception ignored) {
         }
+
+        return false;
     }
 
     @Override
@@ -258,7 +229,7 @@ public class SpotifyCommunicator implements Communicator {
                     if (track.getAlbum().getImages() != null && track.getAlbum().getImages().length > 0) {
                         String url = track.getAlbum().getImages()[0].getUrl();
                         if (url != null && !url.isEmpty()) {
-                            BufferedImage image = ImageIO.read(new URL(url));
+                            BufferedImage image = ImageIO.read(URI.create(url).toURL());
                             if (image != null) {
                                 this.cachedAlbumImage = image;
                                 this.cachedAlbumId = albumId;
@@ -292,43 +263,12 @@ public class SpotifyCommunicator implements Communicator {
         if (albumId != null && albumId.equals(this.cachedAlbumId) && this.cachedAlbumImage != null) return true;
         if (albumId != null && albumId.equals(this.albumDownloadForId) && this.albumLoading) return false;
 
-        synchronized (this) {
-            if (albumId != null && albumId.equals(this.cachedAlbumId) && this.cachedAlbumImage != null) return true;
-            if (albumId != null && albumId.equals(this.albumDownloadForId) && this.albumLoading) return false;
-
-            if (albumId == null) return false;
-
-            this.albumDownloadForId = albumId;
-            this.albumLoading = true;
-
-            EXECUTOR.execute(() -> {
-                try {
-                    if (track.getAlbum().getImages() != null && track.getAlbum().getImages().length > 0) {
-                        String url = track.getAlbum().getImages()[0].getUrl();
-                        if (url != null && !url.isEmpty()) {
-                            BufferedImage image = ImageIO.read(new URL(url));
-                            if (image != null) {
-                                this.cachedAlbumImage = image;
-                                this.cachedAlbumId = albumId;
-                                CompletableFuture<BufferedImage> future = this.albumPending.remove(albumId);
-                                if (future != null) future.complete(image);
-                            }
-                        }
-                    }
-                } catch (Exception e) {
-                    if (onExecutorException != null) onExecutorException.accept(e);
-                    CompletableFuture<BufferedImage> future = this.albumPending.remove(albumId);
-                    if (future != null) future.completeExceptionally(e);
-                } finally {
-                    if (albumId.equals(this.albumDownloadForId)) {
-                        this.albumLoading = false;
-                        this.albumDownloadForId = null;
-                    }
-                }
-            });
-
-            return false;
+        if (track.getAlbum().getImages() != null && track.getAlbum().getImages().length > 0) {
+            String url = track.getAlbum().getImages()[0].getUrl();
+            return url != null && !url.isEmpty();
         }
+
+        return false;
     }
 
     @Override
@@ -447,11 +387,11 @@ public class SpotifyCommunicator implements Communicator {
         String albumId = track.getAlbum().getId();
         if (albumId.equals(this.cachedAlbumId) && this.cachedAlbumImage != null) return CompletableFuture.completedFuture(this.cachedAlbumImage);
 
-        CompletableFuture<BufferedImage> existing = albumPending.get(albumId);
+        CompletableFuture<BufferedImage> existing = this.albumPending.get(albumId);
         if (existing != null) return existing;
 
         CompletableFuture<BufferedImage> future = new CompletableFuture<>();
-        CompletableFuture<BufferedImage> previous = albumPending.putIfAbsent(albumId, future);
+        CompletableFuture<BufferedImage> previous = this.albumPending.putIfAbsent(albumId, future);
         if (previous != null) return previous;
 
         this.isAlbumImageDataAvailable();
@@ -470,11 +410,11 @@ public class SpotifyCommunicator implements Communicator {
         if (artistId == null) return CompletableFuture.completedFuture(null);
         if (artistId.equals(this.cachedAuthorId) && this.cachedAuthorImage != null) return CompletableFuture.completedFuture(this.cachedAuthorImage);
 
-        CompletableFuture<BufferedImage> existing = authorPending.get(artistId);
+        CompletableFuture<BufferedImage> existing = this.authorPending.get(artistId);
         if (existing != null) return existing;
 
         CompletableFuture<BufferedImage> future = new CompletableFuture<>();
-        CompletableFuture<BufferedImage> previous = authorPending.putIfAbsent(artistId, future);
+        CompletableFuture<BufferedImage> previous = this.authorPending.putIfAbsent(artistId, future);
         if (previous != null) return previous;
 
         this.isAuthorImageDataAvailable();
