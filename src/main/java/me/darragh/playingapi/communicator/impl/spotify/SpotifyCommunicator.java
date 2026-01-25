@@ -30,11 +30,7 @@ import java.util.Arrays;
 import java.util.Base64;
 import java.util.Objects;
 import java.util.Random;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.function.Consumer;
 
 /**
@@ -70,6 +66,10 @@ public class SpotifyCommunicator implements Communicator {
     @Getter
     @Setter
     private int tokenRefreshInterval = 2;
+
+    @Getter
+    @Setter
+    private @Nullable Consumer<String> onRefreshTokenUpdated = null;
 
     private volatile BufferedImage cachedAlbumImage = null;
     private volatile String cachedAlbumId = null;
@@ -331,47 +331,53 @@ public class SpotifyCommunicator implements Communicator {
         this.active = true;
         this.authenticated = true;
 
-        EXECUTOR.execute(new Thread(() -> {
-            while (this.active && !Thread.currentThread().isInterrupted()) {
-                try {
-                    TimeUnit.SECONDS.sleep(this.tokenRefreshInterval - 2);
+        this.startTokenRefreshThread();
+        this.startPlaybackThread();
 
-                    AuthorizationCodeCredentials refreshRequest = this.api.authorizationCodePKCERefresh().build().execute();
-                    this.api.setAccessToken(refreshRequest.getAccessToken());
-                    this.api.setRefreshToken(refreshRequest.getRefreshToken());
-                    this.tokenRefreshInterval = refreshRequest.getExpiresIn();
-                } catch (Exception e) {
-                    if (onExecutorException != null) {
-                        onExecutorException.accept(e);
-                    }
-                }
-            }
-        }, "access-token-refresh-thread"));
+        if (this.onRefreshTokenUpdated != null) {
+            this.onRefreshTokenUpdated.accept(credentialsRequest.getRefreshToken());
+        }
+    }
 
-        EXECUTOR.execute(new Thread(() -> {
-            while (this.active && !Thread.currentThread().isInterrupted()) {
-                try {
-                    TimeUnit.MILLISECONDS.sleep(CURRENTLY_PLAYING_POLL_INTERVAL_MS);
-                    GetInformationAboutUsersCurrentPlaybackRequest playbackRequest = this.api.getInformationAboutUsersCurrentPlayback().build();
+    /**
+     * Authenticate using an existing refresh token.
+     *
+     * @param refreshToken The refresh token previously obtained.
+     * @throws IOException The method may throw an IOException.
+     * @throws ParseException The method may throw a ParseException.
+     * @throws SpotifyWebApiException The method may throw a SpotifyWebApiException.
+     */
+    public void handleRefreshToken(@NotNull String refreshToken) throws IOException, ParseException, SpotifyWebApiException {
+        if (this.authenticated) throw new IllegalStateException("Already authenticated");
 
-                    CurrentlyPlayingContext currentlyPlaying = playbackRequest.execute();
+        this.api.setRefreshToken(refreshToken);
 
-                    String trackId = currentlyPlaying.getItem().getId();
-                    GetTrackRequest trackRequest = this.api.getTrack(trackId).build();
+        AuthorizationCodeCredentials credentialsRequest = this.api.authorizationCodePKCERefresh().build().execute();
 
-                    Track freshlyFetched = trackRequest.execute();
-                    if (!Objects.equals(freshlyFetched != null ? freshlyFetched.getId() : null, this.currentTrack != null ? this.currentTrack.getId() : null)) {
-                        this.onTrackChanged(freshlyFetched);
-                    }
-                    this.currentTrack = freshlyFetched;
-                    this.currentPlayingContext = currentlyPlaying;
-                } catch (Exception e) {
-                    if (onExecutorException != null) {
-                        onExecutorException.accept(e);
-                    }
-                }
-            }
-        }, "current-playback-info-thread"));
+        this.api.setAccessToken(credentialsRequest.getAccessToken());
+        this.api.setRefreshToken(credentialsRequest.getRefreshToken());
+        this.tokenRefreshInterval = credentialsRequest.getExpiresIn();
+
+        this.active = true;
+        this.authenticated = true;
+
+        this.startTokenRefreshThread();
+        this.startPlaybackThread();
+
+        if (this.onRefreshTokenUpdated != null) {
+            this.onRefreshTokenUpdated.accept(credentialsRequest.getRefreshToken());
+        }
+    }
+
+    /**
+     * Fetches your current refresh token.
+     *
+     * @return The current refresh token.
+     */
+    public @NotNull String getRefreshToken() {
+        String refreshToken = this.api.getRefreshToken();
+        if (refreshToken == null) throw new IllegalStateException("Not authenticated");
+        return refreshToken;
     }
 
     /**
@@ -421,30 +427,56 @@ public class SpotifyCommunicator implements Communicator {
     }
 
     /**
-     * Generates a random code verifier string.
-     *
-     * @return A randomly generated code verifier.
+     * Starts the token refresh thread.
      */
-    private static @NotNull String generateCodeVerifier() {
-        return new Random().ints(43, 0, CODE_VERIFIER_CHARS.length())
-                .mapToObj(i -> String.valueOf(CODE_VERIFIER_CHARS.charAt(i)))
-                .reduce("", String::concat);
+    private void startTokenRefreshThread() {
+        EXECUTOR.execute(new Thread(() -> {
+            while (this.active && !Thread.currentThread().isInterrupted()) {
+                try {
+                    TimeUnit.SECONDS.sleep(this.tokenRefreshInterval - 2);
+                    AuthorizationCodeCredentials refreshed =
+                            this.api.authorizationCodePKCERefresh().build().execute();
+                    this.api.setAccessToken(refreshed.getAccessToken());
+                    this.api.setRefreshToken(refreshed.getRefreshToken());
+                    this.tokenRefreshInterval = refreshed.getExpiresIn();
+                    if (this.onRefreshTokenUpdated != null) {
+                        this.onRefreshTokenUpdated.accept(refreshed.getRefreshToken());
+                    }
+                } catch (Exception e) {
+                    if (onExecutorException != null) onExecutorException.accept(e);
+                }
+            }
+        }, "access-token-refresh-thread"));
     }
 
     /**
-     * Produces a challenge hash from the provided code verifier.
-     *
-     * @param codeVerifier The code verifier to hash.
-     * @return The resulting challenge hash.
+     * Starts the playback information polling thread.
      */
-    private static @NotNull String produceChallengeHash(@NotNull String codeVerifier) {
-        byte[] bytes = codeVerifier.getBytes(StandardCharsets.UTF_8);
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            return Base64.getUrlEncoder().encodeToString(digest.digest(bytes)).replace("=", "");
-        } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException("SHA-256 algorithm not found", e);
-        }
+    private void startPlaybackThread() {
+        EXECUTOR.execute(new Thread(() -> {
+            while (this.active && !Thread.currentThread().isInterrupted()) {
+                try {
+                    TimeUnit.MILLISECONDS.sleep(CURRENTLY_PLAYING_POLL_INTERVAL_MS);
+                    GetInformationAboutUsersCurrentPlaybackRequest playbackRequest =
+                            this.api.getInformationAboutUsersCurrentPlayback().build();
+                    CurrentlyPlayingContext currentlyPlaying = playbackRequest.execute();
+
+                    String trackId = currentlyPlaying.getItem().getId();
+                    Track freshlyFetched = this.api.getTrack(trackId).build().execute();
+
+                    if (!Objects.equals(
+                            freshlyFetched != null ? freshlyFetched.getId() : null,
+                            this.currentTrack != null ? this.currentTrack.getId() : null)) {
+                        this.onTrackChanged(freshlyFetched);
+                    }
+
+                    this.currentTrack = freshlyFetched;
+                    this.currentPlayingContext = currentlyPlaying;
+                } catch (Exception e) {
+                    if (onExecutorException != null) onExecutorException.accept(e);
+                }
+            }
+        }, "current-playback-info-thread"));
     }
 
     /**
@@ -471,6 +503,33 @@ public class SpotifyCommunicator implements Communicator {
             this.cachedAuthorId = null;
             CompletableFuture<BufferedImage> future = this.authorPending.remove(old);
             if (future != null) future.complete(null);
+        }
+    }
+
+    /**
+     * Generates a random code verifier string.
+     *
+     * @return A randomly generated code verifier.
+     */
+    private static @NotNull String generateCodeVerifier() {
+        return new Random().ints(43, 0, CODE_VERIFIER_CHARS.length())
+                .mapToObj(i -> String.valueOf(CODE_VERIFIER_CHARS.charAt(i)))
+                .reduce("", String::concat);
+    }
+
+    /**
+     * Produces a challenge hash from the provided code verifier.
+     *
+     * @param codeVerifier The code verifier to hash.
+     * @return The resulting challenge hash.
+     */
+    private static @NotNull String produceChallengeHash(@NotNull String codeVerifier) {
+        byte[] bytes = codeVerifier.getBytes(StandardCharsets.UTF_8);
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            return Base64.getUrlEncoder().encodeToString(digest.digest(bytes)).replace("=", "");
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException("SHA-256 algorithm not found", e);
         }
     }
 }

@@ -1,7 +1,8 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="SpotifyDemo" type="Application" factoryName="Application">
+  <configuration default="false" name="Spotify Demo" type="Application" factoryName="Application">
     <option name="MAIN_CLASS_NAME" value="SpotifyDemo" />
     <module name="playing-api.test" />
+    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/run" />
     <method v="2">
       <option name="Make" enabled="true" />
     </method>

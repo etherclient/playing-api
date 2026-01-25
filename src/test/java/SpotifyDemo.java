@@ -15,10 +15,10 @@ import java.util.concurrent.Executors;
  * @author darraghd493
  * @since 1.0.0
  */
-public class SpotifyDemo {
+public final class SpotifyDemo {
     private static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor();
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws IOException {
         SpotifyCommunicator communicator = CommunicatorFactory.createSpotifyCommunicator("029c432099274f84aff54b58ac280cf6", "http://127.0.0.1:4375");
         SpotifyServerHandler handler = new SpotifyServerHandler(
                 new SimpleSpotifyPageHandler(),
@@ -59,11 +59,7 @@ public class SpotifyDemo {
                 },
                 4375
         );
-        try {
-            handler.start();
-            System.out.println("Authenticate: " + communicator.getCodeUri());
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        handler.start();
+        System.out.println("Authenticate: " + communicator.getCodeUri());
     }
 }
