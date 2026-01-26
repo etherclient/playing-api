@@ -1,9 +1,11 @@
 package me.darragh.playingapi.communicator;
 
 import lombok.experimental.UtilityClass;
+import me.darragh.playingapi.communicator.impl.mpris.MPRISCommunicator;
 import me.darragh.playingapi.communicator.impl.spotify.SpotifyCommunicator;
 import me.darragh.playingapi.communicator.impl.smtc.SMTCCommunicator;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * A factory for creating {@link Communicator} instances.
@@ -13,6 +15,15 @@ import org.jetbrains.annotations.NotNull;
  */
 @UtilityClass
 public final class CommunicatorFactory {
+    /**
+     * Creates a new {@link MPRISCommunicator} instance.
+     *
+     * @return A new {@link MPRISCommunicator} instance.
+     */
+    public static MPRISCommunicator createMPRISCommunicator(@Nullable String mprisBusName) {
+        return new MPRISCommunicator(mprisBusName);
+    }
+
     /**
      * Creates a new {@link SMTCCommunicator} instance.
      *
