@@ -13,6 +13,7 @@ java {
 // Dependencies:
 repositories {
     mavenCentral()
+    maven { url = uri("https://raw.githubusercontent.com/jitsi/jitsi-maven-repository/master/releases/") }
 }
 
 val annotationImplementation: Configuration by configurations.creating {
@@ -25,6 +26,7 @@ val annotationImplementation: Configuration by configurations.creating {
 dependencies {
     implementation("se.michaelthelin.spotify:spotify-web-api-java:9.4.0")
     implementation("net.java.dev.jna:jna:5.18.1")
+    implementation("org.freedesktop.dbus:dbus-java:2.7")
 
     compileOnly("org.jetbrains:annotations:26.0.2")
     annotationImplementation("org.projectlombok:lombok:1.18.36")

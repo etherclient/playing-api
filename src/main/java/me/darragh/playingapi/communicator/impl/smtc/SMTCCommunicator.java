@@ -14,7 +14,7 @@ import java.io.IOException;
 /**
  * A communicator implementation that interacts with the System Media Transport Controls (SMTC) on Windows.
  *
- * @see <a href="https://learn.microsoft.com/en-us/uwp/api/windows.media.systemmediatransportcontrols?view=winrt-26100">...</a>
+ * @see <a href="https://learn.microsoft.com/en-us/uwp/api/windows.media.systemmediatransportcontrols?view=winrt-26100">WinRT docs</a>
  * @see SMTCBridge
  * @author darraghd493
  * @since 1.0.0
@@ -52,7 +52,7 @@ public final class SMTCCommunicator implements Communicator {
     }
 
     @Override
-    public BufferedImage getArtistImageData() {
+    public @Nullable BufferedImage getArtistImageData() {
         IntByReference sizeRef = new IntByReference();
         Pointer pointer = this.bridge.getArtistImage(sizeRef);
         return this.getBufferedImage(sizeRef, pointer);
@@ -64,10 +64,11 @@ public final class SMTCCommunicator implements Communicator {
     }
 
     @Override
-    public BufferedImage getAlbumImageData() {
-        IntByReference sizeRef = new IntByReference();
-        Pointer pointer = this.bridge.getAlbumImage(sizeRef);
-        return this.getBufferedImage(sizeRef, pointer);
+    public @Nullable BufferedImage getAlbumImageData() {
+//        IntByReference sizeRef = new IntByReference();
+//        Pointer pointer = this.bridge.getAlbumImage(sizeRef);
+//        return this.getBufferedImage(sizeRef, pointer);
+        return null;
     }
 
     @Override

@@ -2,8 +2,10 @@
   <dictionary name="project">
     <words>
       <w>aarch</w>
+      <w>mpris</w>
       <w>pkce</w>
       <w>smtcbridge</w>
+      <w>xesam</w>
     </words>
   </dictionary>
 </component>

@@ -146,12 +146,12 @@ bool __cdecl isAlbumImageAvailable() {
 
 extern "C" __declspec(dllexport)
 void* __cdecl getArtistImage(int* size) {
-    return getAlbumImage(size);
+    return nullptr;
 }
 
 extern "C" __declspec(dllexport)
 bool __cdecl isArtistImageAvailable() {
-    return isAlbumImageAvailable();
+    return false;
 }
 
 extern "C" __declspec(dllexport)
