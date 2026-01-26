@@ -53,22 +53,21 @@ public final class SMTCCommunicator implements Communicator {
 
     @Override
     public @Nullable BufferedImage getArtistImageData() {
-        IntByReference sizeRef = new IntByReference();
-        Pointer pointer = this.bridge.getArtistImage(sizeRef);
-        return this.getBufferedImage(sizeRef, pointer);
+        // hardcoded - unsupported
+        return null;
     }
 
     @Override
     public boolean isArtistImageDataAvailable() {
-        return this.bridge.isArtistImageAvailable();
+        // hardcoded - unsupported
+        return false;
     }
 
     @Override
     public @Nullable BufferedImage getAlbumImageData() {
-//        IntByReference sizeRef = new IntByReference();
-//        Pointer pointer = this.bridge.getAlbumImage(sizeRef);
-//        return this.getBufferedImage(sizeRef, pointer);
-        return null;
+        IntByReference sizeRef = new IntByReference();
+        Pointer pointer = this.bridge.getAlbumImage(sizeRef);
+        return this.getBufferedImage(sizeRef, pointer);
     }
 
     @Override

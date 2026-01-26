@@ -1,6 +1,6 @@
 @echo off
 
-cmake -S . -B build-x64  -A x64
+cmake -S . -B build-x86-64 -A x64
 cmake --build build-x86-64 --config Release
 
 cmake -S . -B build-x86 -A Win32
