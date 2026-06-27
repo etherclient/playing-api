@@ -34,6 +34,16 @@ public final class CommunicatorFactory {
     }
 
     /**
+     * Creates a new {@link SMTCCommunicator} instance with a specified polling rate.
+     *
+     * @param pollingRate The polling rate in milliseconds for updating the communicator's data.
+     * @return A new {@link SMTCCommunicator} instance.
+     */
+    public static SMTCCommunicator createSMTCCommunicator(long pollingRate) {
+        return new SMTCCommunicator(pollingRate);
+    }
+
+    /**
      * Creates a new {@link SpotifyCommunicator} instance.
      *
      * @param clientId The Spotify client ID.

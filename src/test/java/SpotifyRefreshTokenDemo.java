@@ -89,6 +89,8 @@ public final class SpotifyRefreshTokenDemo {
                 System.out.println("Title: " + communicator.getTitle());
                 System.out.println("Arist: " + communicator.getArtist());
                 System.out.println("Album: " + communicator.getAlbum());
+                System.out.println("Played Seconds: " + communicator.getPlayedSeconds());
+                System.out.println("Duration Seconds: " + communicator.getDurationSeconds());
                 try {
                     //noinspection BusyWait
                     Thread.sleep(1000L);

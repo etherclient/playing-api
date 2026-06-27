@@ -12,6 +12,7 @@ import javax.swing.*;
 public final class SMTCDemo {
     public static void main(String[] args) {
         SMTCCommunicator communicator = CommunicatorFactory.createSMTCCommunicator();
+        communicator.start();
         SwingUtilities.invokeLater(() -> {
             new ImageViewer(communicator);
         });
