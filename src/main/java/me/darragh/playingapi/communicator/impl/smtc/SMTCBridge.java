@@ -62,6 +62,11 @@ interface SMTCBridge extends Library {
     boolean isArtistImageAvailable();
 
     /**
+     * @see Communicator#isPaused()
+     */
+    boolean isPaused();
+
+    /**
      * Frees memory allocated for a string or image.
      *
      * @param pointer The pointer to the memory to free.

@@ -128,6 +128,11 @@ public class SpotifyCommunicator implements Communicator {
     }
 
     @Override
+    public boolean isPaused() {
+        return this.currentPlayingContext == null || this.currentPlayingContext.getIs_playing() == null || !this.currentPlayingContext.getIs_playing();
+    }
+
+    @Override
     public @Nullable BufferedImage getArtistImageData() {
         Track track = this.currentTrack;
         if (track == null || track.getArtists() == null || track.getArtists().length == 0) return null;

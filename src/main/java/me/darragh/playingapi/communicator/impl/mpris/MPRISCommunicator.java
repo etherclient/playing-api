@@ -123,6 +123,16 @@ public class MPRISCommunicator implements Communicator {
     }
 
     @Override
+    public boolean isPaused() {
+        if (this.currentPlayer == null || this.playerProperties == null) return false;
+        try {
+            Object status = this.unwrap(this.playerProperties.Get(MPRIS_PLAYER_PREFIX, "PlaybackStatus"));
+            return status != null && !PLAYING_STATUS.equalsIgnoreCase(status.toString());
+        } catch (Exception ignored) {}
+        return false;
+    }
+
+    @Override
     public @Nullable BufferedImage getArtistImageData() {
         return null;
     }

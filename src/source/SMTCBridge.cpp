@@ -92,6 +92,17 @@ int __cdecl getPlayedSeconds() {
     } catch (...) { return 0; }
 }
 
+// play state
+extern "C" __declspec(dllexport)
+bool __cdecl isPaused() {
+    InitOnce();
+    if (!g_sess) return false;
+    try {
+        auto info = g_sess.GetPlaybackInfo();
+        return info.PlaybackStatus() != GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing;
+    } catch (...) { return false; }
+}
+
 // duration via timeline
 extern "C" __declspec(dllexport)
 int __cdecl getDurationSeconds() {

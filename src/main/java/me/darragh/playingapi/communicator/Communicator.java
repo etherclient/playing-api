@@ -60,6 +60,22 @@ public interface Communicator {
     }
 
     /**
+     * Checks if the currently playing media is paused.
+     *
+     * @return True if paused, false otherwise.
+     */
+    boolean isPaused();
+
+    /**
+     * Checks if the currently playing media is playing.
+     *
+     * @return True if playing, false otherwise.
+     */
+    default boolean isPlaying() {
+        return !isPaused();
+    }
+
+    /**
      * Gets the image data of the author of the currently playing media.
      *
      * @return The author image data, or null if not available.

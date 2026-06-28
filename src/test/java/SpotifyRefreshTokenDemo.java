@@ -91,6 +91,7 @@ public final class SpotifyRefreshTokenDemo {
                 System.out.println("Album: " + communicator.getAlbum());
                 System.out.println("Played Seconds: " + communicator.getPlayedSeconds());
                 System.out.println("Duration Seconds: " + communicator.getDurationSeconds());
+                System.out.println("Is Playing: " + communicator.isPlaying());
                 try {
                     //noinspection BusyWait
                     Thread.sleep(1000L);

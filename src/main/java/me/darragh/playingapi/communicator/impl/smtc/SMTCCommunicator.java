@@ -35,6 +35,8 @@ public final class SMTCCommunicator implements Communicator {
 
     private volatile boolean cachedAlbumImageAvailable = false;
     private volatile @Nullable BufferedImage cachedAlbumImage = null;
+    
+    private volatile boolean cachedPaused = false;
     //endregion
 
     //region Tracking
@@ -60,6 +62,7 @@ public final class SMTCCommunicator implements Communicator {
             this.cachedAlbum = currentAlbum != null ? currentAlbum : "";
             this.cachedDurationSeconds = this.bridge.getDurationSeconds();
             this.cachedPlayedSeconds = this.bridge.getPlayedSeconds();
+            this.cachedPaused = this.bridge.isPaused();
 
             if (!Objects.equals(this.lastProcessedTitle, currentTitle) || !Objects.equals(this.lastProcessedAlbum, currentAlbum)) {
                 this.lastProcessedTitle = currentTitle;
@@ -102,6 +105,11 @@ public final class SMTCCommunicator implements Communicator {
     @Override
     public int getPlayedSeconds() {
         return this.cachedPlayedSeconds;
+    }
+
+    @Override
+    public boolean isPaused() {
+        return this.cachedPaused;
     }
 
     @Override
