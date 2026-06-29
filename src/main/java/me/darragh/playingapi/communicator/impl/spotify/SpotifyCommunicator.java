@@ -304,6 +304,46 @@ public class SpotifyCommunicator implements Communicator {
         this.authorPending.clear();
     }
 
+    @Override
+    public void playMedia() {
+        if (!this.active) return;
+        try {
+            this.api.startResumeUsersPlayback().build().executeAsync();
+        } catch (Exception e) {
+            if (onExecutorException != null) onExecutorException.accept(e);
+        }
+    }
+
+    @Override
+    public void pauseMedia() {
+        if (!this.active) return;
+        try {
+            this.api.pauseUsersPlayback().build().executeAsync();
+        } catch (Exception e) {
+            if (onExecutorException != null) onExecutorException.accept(e);
+        }
+    }
+
+    @Override
+    public void nextMedia() {
+        if (!this.active) return;
+        try {
+            this.api.skipUsersPlaybackToNextTrack().build().executeAsync();
+        } catch (Exception e) {
+            if (onExecutorException != null) onExecutorException.accept(e);
+        }
+    }
+
+    @Override
+    public void previousMedia() {
+        if (!this.active) return;
+        try {
+            this.api.skipUsersPlaybackToPreviousTrack().build().executeAsync();
+        } catch (Exception e) {
+            if (onExecutorException != null) onExecutorException.accept(e);
+        }
+    }
+
     /**
      * Gets the authorisation code URI for Spotify authentication.
      *

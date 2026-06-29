@@ -169,4 +169,24 @@ public final class SMTCCommunicator implements Communicator {
             return null;
         }
     }
+
+    @Override
+    public void playMedia() {
+        this.bridge.playMedia();
+    }
+
+    @Override
+    public void pauseMedia() {
+        this.bridge.pauseMedia();
+    }
+
+    @Override
+    public void nextMedia() {
+        this.bridge.nextMedia();
+    }
+
+    @Override
+    public void previousMedia() {
+        this.bridge.previousMedia();
+    }
 }

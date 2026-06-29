@@ -112,4 +112,28 @@ public interface Communicator {
      * Stops the communicator.
      */
     void stop();
+
+    /**
+     * Plays the media.
+     */
+    default void playMedia() {
+    }
+
+    /**
+     * Pauses the media.
+     */
+    default void pauseMedia() {
+    }
+
+    /**
+     * Skips to the next media.
+     */
+    default void nextMedia() {
+    }
+
+    /**
+     * Skips to the previous media.
+     */
+    default void previousMedia() {
+    }
 }

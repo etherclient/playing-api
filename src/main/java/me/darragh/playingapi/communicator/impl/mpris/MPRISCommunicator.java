@@ -21,6 +21,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import org.freedesktop.dbus.interfaces.DBusInterface;
+import org.freedesktop.dbus.annotations.DBusInterfaceName;
+
 /**
  * A communicator implementation that interacts with the D-Bus (MPRIS spec) on Linux.
  * <b>Note:</b> Only tested on Linux Mint (Virtual Machine).
@@ -130,6 +133,30 @@ public class MPRISCommunicator implements Communicator {
             return status != null && !PLAYING_STATUS.equalsIgnoreCase(status.toString());
         } catch (Exception ignored) {}
         return false;
+    }
+
+    @Override
+    public void playMedia() {
+        MPRISPlayer player = this.getPlayer();
+        if (player != null) player.Play();
+    }
+
+    @Override
+    public void pauseMedia() {
+        MPRISPlayer player = this.getPlayer();
+        if (player != null) player.Pause();
+    }
+
+    @Override
+    public void nextMedia() {
+        MPRISPlayer player = this.getPlayer();
+        if (player != null) player.Next();
+    }
+
+    @Override
+    public void previousMedia() {
+        MPRISPlayer player = this.getPlayer();
+        if (player != null) player.Previous();
     }
 
     @Override
@@ -337,5 +364,19 @@ public class MPRISCommunicator implements Communicator {
             //noinspection deprecation
             return ImageIO.read(new URL(url));
         } catch (IOException e) { return null; }
+    }
+
+    /**
+     * Gets the {@link MPRISPlayer} interface for the current player.
+     *
+     * @return The {@link MPRISPlayer} interface, or null if not available.
+     */
+    private @Nullable MPRISPlayer getPlayer() {
+        if (this.connection == null || this.currentPlayer == null) return null;
+        try {
+            return this.connection.getRemoteObject(this.currentPlayer, "/org/mpris/MediaPlayer2", MPRISPlayer.class);
+        } catch (DBusException e) {
+            return null;
+        }
     }
 }

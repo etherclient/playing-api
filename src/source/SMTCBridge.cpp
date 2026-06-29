@@ -103,6 +103,42 @@ bool __cdecl isPaused() {
     } catch (...) { return false; }
 }
 
+extern "C" __declspec(dllexport)
+bool __cdecl playMedia() {
+    InitOnce();
+    if (!g_sess) return false;
+    try {
+        return g_sess.TryPlayAsync().get();
+    } catch (...) { return false; }
+}
+
+extern "C" __declspec(dllexport)
+bool __cdecl pauseMedia() {
+    InitOnce();
+    if (!g_sess) return false;
+    try {
+        return g_sess.TryPauseAsync().get();
+    } catch (...) { return false; }
+}
+
+extern "C" __declspec(dllexport)
+bool __cdecl nextMedia() {
+    InitOnce();
+    if (!g_sess) return false;
+    try {
+        return g_sess.TrySkipNextAsync().get();
+    } catch (...) { return false; }
+}
+
+extern "C" __declspec(dllexport)
+bool __cdecl previousMedia() {
+    InitOnce();
+    if (!g_sess) return false;
+    try {
+        return g_sess.TrySkipPreviousAsync().get();
+    } catch (...) { return false; }
+}
+
 // duration via timeline
 extern "C" __declspec(dllexport)
 int __cdecl getDurationSeconds() {
