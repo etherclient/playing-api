@@ -39,6 +39,10 @@ tasks.compileJava {
     options.encoding = "UTF-8"
 }
 
+tasks.test {
+    failOnNoDiscoveredTests.set(false) // all tests are demos
+}
+
 // Publishing:
 publishing {
     publications {
