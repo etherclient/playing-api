@@ -51,7 +51,7 @@ publishing {
             pom {
                 name.set("playing-api")
                 properties.set(mapOf(
-                    "java.version" to "17",
+                    "java.version" to "25",
                     "project.build.sourceEncoding" to "UTF-8",
                     "project.reporting.outputEncoding" to "UTF-8"
                 ))
