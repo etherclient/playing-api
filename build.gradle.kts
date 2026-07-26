@@ -87,8 +87,8 @@ publishing {
         maven {
             url = uri("https://repo.darragh.website/releases")
             credentials {
-                username = providers.gradleProperty("repoToken").get()
-                password = providers.gradleProperty("repoSecret").get()
+                username = providers.gradleProperty("repoToken").orNull // not ideal but lazy for github actions lol
+                password = providers.gradleProperty("repoSecret").orNull
             }
             authentication {
                 create<BasicAuthentication>("basic")
