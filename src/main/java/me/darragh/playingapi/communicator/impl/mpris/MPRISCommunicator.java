@@ -13,20 +13,15 @@ import org.jetbrains.annotations.Nullable;
 
 import java.awt.image.BufferedImage;
 import java.io.File;
-import java.io.IOException;
+import java.net.URI;
 import java.net.URL;
 import javax.imageio.ImageIO;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
-
-import org.freedesktop.dbus.interfaces.DBusInterface;
-import org.freedesktop.dbus.annotations.DBusInterfaceName;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * A communicator implementation that interacts with the D-Bus (MPRIS spec) on Linux.
- * <b>Note:</b> Only tested on Linux Mint (Virtual Machine).
  *
  * @see <a href="https://specifications.freedesktop.org/mpris/latest/">specification</a>
  * @author darraghd493
@@ -34,6 +29,8 @@ import org.freedesktop.dbus.annotations.DBusInterfaceName;
  */
 @RequiredArgsConstructor
 public class MPRISCommunicator implements Communicator {
+    private static final long POSITION_FETCH_DELAY_MS = 1000L; // dbus calls are expensive - this might lag behind, but it is good enough xd
+
     private static final String PLAYING_STATUS = "Playing";
     private static final String MPRIS_PREFIX = "org.mpris.MediaPlayer2.";
     private static final String MPRIS_PLAYER_PREFIX = "org.mpris.MediaPlayer2.Player";
@@ -41,6 +38,16 @@ public class MPRISCommunicator implements Communicator {
     private DBusConnection connection;
     private Properties playerProperties;
     private String currentPlayer = null;
+
+    //region Caching
+    private volatile String cachedTitle = "", cachedArtist = "", cachedAlbum = "", cachedArtUrl = "";
+    private volatile int cachedDurationSeconds = 0;
+    private volatile boolean cachedPaused = true;
+
+    private volatile int cachedPositionSeconds = 0;
+    private volatile long lastPositionFetchMs = 0;
+    private volatile boolean fetchingPosition = false;
+    //endregion
 
     private final @Nullable String mprisBusName;
 
@@ -67,14 +74,20 @@ public class MPRISCommunicator implements Communicator {
                 if (!MPRIS_PLAYER_PREFIX.equals(sig.getInterfaceName())) return;
 
                 Map<String, Variant<?>> changed = sig.getPropertiesChanged();
+
                 if (changed.containsKey("PlaybackStatus")) {
                     String status = unwrap(changed.get("PlaybackStatus")).toString();
 
-                    if (PLAYING_STATUS.equalsIgnoreCase(status)) {
-                        if (!this.isSameSender(sig.getSource(), this.currentPlayer)) {
-                            this.switchPlayer(sig.getSource());
-                        }
+                    boolean isPlaying = PLAYING_STATUS.equalsIgnoreCase(status);
+                    this.cachedPaused = !isPlaying;
+
+                    if (isPlaying && !this.isSameSender(sig.getSource(), this.currentPlayer)) {
+                        this.switchPlayer(sig.getSource());
                     }
+                }
+
+                if (changed.containsKey("Metadata")) {
+                    this.updateMetadataCache(changed.get("Metadata"));
                 }
             });
         } catch (DBusException e) {
@@ -91,72 +104,89 @@ public class MPRISCommunicator implements Communicator {
 
     @Override
     public @NotNull String getTitle() {
-        return this.getMetadataString("xesam:title");
+        return this.cachedTitle;
     }
 
     @Override
     public @NotNull String getArtist() {
-        return this.getMetadataString("xesam:artist");
+        return this.cachedArtist;
     }
 
     @Override
     public @NotNull String getAlbum() {
-        return this.getMetadataString("xesam:album");
+        return this.cachedAlbum;
     }
 
     @Override
     public int getDurationSeconds() {
-        Object dur = this.getMetadata("mpris:length");
-        if (dur instanceof Number n) {
-            return (int) (n.longValue() / 1_000_000);
-        }
-        return 0;
+        return this.cachedDurationSeconds;
     }
 
+    //region getPlayedSeconds
     @Override
     public int getPlayedSeconds() {
-        try {
-            Object pos = this.playerProperties.Get("org.mpris.MediaPlayer2.Player", "Position");
-            Object unwrapped = this.unwrap(pos);
-            if (unwrapped instanceof Number n) {
-                return (int) (n.longValue() / 1_000_000);
-            }
-        } catch (Exception ignored) {}
-        return 0;
+        long now = System.currentTimeMillis();
+
+        if (now - this.lastPositionFetchMs > POSITION_FETCH_DELAY_MS && !this.fetchingPosition && this.playerProperties != null) {
+            this.fetchingPosition = true;
+            CompletableFuture.runAsync(this::fetchPosition);
+        }
+
+        return this.cachedPositionSeconds;
     }
+
+    private void fetchPosition() {
+        try {
+            if (this.playerProperties != null) {
+                Object position = this.playerProperties.Get(MPRIS_PLAYER_PREFIX, "Position");
+                Object unwrapped = this.unwrap(position);
+                if (unwrapped instanceof Number n) {
+                    this.cachedPositionSeconds = (int) (n.longValue() / 1_000_000);
+                    this.lastPositionFetchMs = System.currentTimeMillis();
+                }
+            }
+        } catch (Exception ignored) {
+        } finally {
+            this.fetchingPosition = false;
+        }
+    }
+    //endregion
 
     @Override
     public boolean isPaused() {
-        if (this.currentPlayer == null || this.playerProperties == null) return false;
-        try {
-            Object status = this.unwrap(this.playerProperties.Get(MPRIS_PLAYER_PREFIX, "PlaybackStatus"));
-            return status != null && !PLAYING_STATUS.equalsIgnoreCase(status.toString());
-        } catch (Exception ignored) {}
-        return false;
+        return this.cachedPaused;
     }
 
     @Override
     public void playMedia() {
-        MPRISPlayer player = this.getPlayer();
-        if (player != null) player.Play();
+        CompletableFuture.runAsync(() -> {
+            MPRISPlayer player = this.getPlayer();
+            if (player != null) player.Play();
+        });
     }
 
     @Override
     public void pauseMedia() {
-        MPRISPlayer player = this.getPlayer();
-        if (player != null) player.Pause();
+        CompletableFuture.runAsync(() -> {
+            MPRISPlayer player = this.getPlayer();
+            if (player != null) player.Pause();
+        });
     }
 
     @Override
     public void nextMedia() {
-        MPRISPlayer player = this.getPlayer();
-        if (player != null) player.Next();
+        CompletableFuture.runAsync(() -> {
+            MPRISPlayer player = this.getPlayer();
+            if (player != null) player.Next();
+        });
     }
 
     @Override
     public void previousMedia() {
-        MPRISPlayer player = this.getPlayer();
-        if (player != null) player.Previous();
+        CompletableFuture.runAsync(() -> {
+            MPRISPlayer player = this.getPlayer();
+            if (player != null) player.Previous();
+        });
     }
 
     @Override
@@ -171,12 +201,12 @@ public class MPRISCommunicator implements Communicator {
 
     @Override
     public @Nullable BufferedImage getAlbumImageData() {
-        return getImageFromUrl(this.getMetadataString("mpris:artUrl"));
+        return getImageFromUrl(this.cachedArtUrl);
     }
 
     @Override
     public boolean isAlbumImageDataAvailable() {
-        return !this.getMetadataString("mpris:artUrl").isEmpty();
+        return !this.cachedArtUrl.isEmpty();
     }
 
     //region Metadata Handling
@@ -185,74 +215,88 @@ public class MPRISCommunicator implements Communicator {
      *
      * @return The unwrapped object.
      */
-    private Object unwrap(Object obj) {
-        while (obj instanceof Variant<?> v) {
-            obj = v.getValue();
+    private Object unwrap(Object object) {
+        while (object instanceof Variant<?> v) {
+            object = v.getValue();
         }
-        return obj;
+        return object;
     }
 
     /**
-     * Finds a key in the player metadata map.
+     * Pre-parses the D-Bus metadata ONCE on the D-Bus worker thread when signals arrive.
+     *
+     * @param rawMetadata The raw metadata object.
      */
-    private Object getMetadata(String key) {
-        if (this.playerProperties == null) return null;
-        try {
-            Object rawMetadata = this.playerProperties.Get(MPRIS_PLAYER_PREFIX, "Metadata");
-            Object unwrappedMetadata = this.unwrap(rawMetadata);
+    private void updateMetadataCache(Object rawMetadata) {
+        Object unwrapped = unwrap(rawMetadata);
+        if (!(unwrapped instanceof Map<?, ?> map)) return;
 
-            if (!(unwrappedMetadata instanceof Map<?, ?> map)) return null;
+        String title = "", artist = "", album = "", artUrl = "";
+        int duration = 0;
 
-            for (Map.Entry<?, ?> entry : map.entrySet()) {
-                String entryKey = String.valueOf(this.unwrap(entry.getKey()));
-                if (entryKey.equals(key)) {
-                    return this.unwrap(entry.getValue());
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            String key = String.valueOf(unwrap(entry.getKey()));
+            Object value = unwrap(entry.getValue());
+
+            switch (key) {
+                case "xesam:title" -> title = parseMetadataStringValue(value);
+                case "xesam:artist" -> artist = parseMetadataStringValue(value);
+                case "xesam:album" -> album = parseMetadataStringValue(value);
+                case "mpris:artUrl" -> artUrl = parseMetadataStringValue(value);
+                case "mpris:length" -> {
+                    if (value instanceof Number n) {
+                        duration = (int) (n.longValue() / 1_000_000);
+                    }
                 }
             }
-        } catch (Exception ignored) {}
-        return null;
+        }
+
+        this.cachedTitle = title;
+        this.cachedArtist = artist;
+        this.cachedAlbum = album;
+        this.cachedArtUrl = artUrl;
+        this.cachedDurationSeconds = duration;
     }
 
     /**
-     * Converts a metadata key to a string representation.
+     * Converts a raw metadata value to a string representation.
      * <ul>
      *     <li>unmodified for individual strings</li>
-     *     <li>comma deliminated for lists of strings</li>
+     *     <li>comma deliminated for lists/or arrays of objects</li>
      * </ul>
      *
-     * @param key The metadata key.
-     * @return The string representation of the metadata value.
+     * @param value The raw metadata value to parse.
+     * @return The string representation of the value.
      */
-    private @NotNull String getMetadataString(String key) {
-        Object value = this.getMetadata(key);
+    private String parseMetadataStringValue(Object value) {
         if (value == null) return "";
-
         if (value instanceof List<?> list) {
-            return list.stream()
-                    .map(this::unwrap)
-                    .map(String::valueOf)
-                    .filter(s -> !s.isEmpty())
-                    .collect(Collectors.joining(", "));
+            StringBuilder builder = new StringBuilder();
+            for (Object item : list) {
+                Object unwrapped = unwrap(item);
+                if (unwrapped != null && !unwrapped.toString().isEmpty()) {
+                    if (!builder.isEmpty()) builder.append(", ");
+                    builder.append(unwrapped);
+                }
+            }
+            return builder.toString();
         }
-
         if (value.getClass().isArray()) {
-            return Arrays.stream((Object[]) value)
-                    .map(this::unwrap)
-                    .map(String::valueOf)
-                    .filter(s -> !s.isEmpty())
-                    .collect(Collectors.joining(", "));
+            StringBuilder builder = new StringBuilder();
+            for (Object item : (Object[]) value) {
+                Object unwrapped = unwrap(item);
+                if (unwrapped != null && !unwrapped.toString().isEmpty()) {
+                    if (!builder.isEmpty()) builder.append(", ");
+                    builder.append(unwrapped);
+                }
+            }
+            return builder.toString();
         }
-
         return String.valueOf(value);
     }
     //endregion
 
     //region Player Handling
-    /**
-     * Selects the initial MPRIS player to connect to.
-     *
-     * @param dbus The D-Bus interface.
-     */
     private void selectInitialPlayer(DBus dbus) {
         try {
             String selected = null;
@@ -278,8 +322,7 @@ public class MPRISCommunicator implements Communicator {
      */
     private void refreshPlayerList(DBus dbus) {
         try {
-            String playingPlayer = null,
-                    firstFound = null;
+            String playingPlayer = null, firstFound = null;
 
             for (String name : dbus.ListNames()) {
                 if (!name.startsWith(MPRIS_PREFIX)) continue;
@@ -308,6 +351,16 @@ public class MPRISCommunicator implements Communicator {
         try {
             this.playerProperties = this.connection.getRemoteObject(bus, "/org/mpris/MediaPlayer2", Properties.class);
             this.currentPlayer = bus;
+
+            Object rawMetadata = this.playerProperties.Get(MPRIS_PLAYER_PREFIX, "Metadata");
+            this.updateMetadataCache(rawMetadata);
+
+            Object status = this.playerProperties.Get(MPRIS_PLAYER_PREFIX, "PlaybackStatus");
+            if (status != null) {
+                this.cachedPaused = !PLAYING_STATUS.equalsIgnoreCase(unwrap(status).toString());
+            }
+
+            this.fetchPosition();
         } catch (Exception ignored) {
         }
     }
@@ -359,11 +412,13 @@ public class MPRISCommunicator implements Communicator {
         if (url == null || url.isEmpty()) return null;
         try {
             if (url.startsWith("file://")) {
-                return ImageIO.read(new File(url.substring(7)));
+                return ImageIO.read(new File(new URI(url)));
             }
             //noinspection deprecation
             return ImageIO.read(new URL(url));
-        } catch (IOException e) { return null; }
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /**
