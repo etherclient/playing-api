@@ -3,7 +3,6 @@ package me.darragh.playingapi.communicator.impl.mpris;
 import lombok.RequiredArgsConstructor;
 import me.darragh.playingapi.communicator.Communicator;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
-import org.freedesktop.dbus.connections.impl.DBusConnectionBuilder;
 import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.interfaces.DBus;
 import org.freedesktop.dbus.interfaces.Properties;
@@ -54,7 +53,7 @@ public class MPRISCommunicator implements Communicator {
     @Override
     public void start() {
         try {
-            this.connection = DBusConnectionBuilder.forSessionBus().build();
+            this.connection = DBusConnection.getConnection(DBusConnection.DBusBusType.SESSION);
 
             if (this.mprisBusName != null) {
                 this.switchPlayer(this.mprisBusName);
@@ -140,8 +139,8 @@ public class MPRISCommunicator implements Communicator {
             if (this.playerProperties != null) {
                 Object position = this.playerProperties.Get(MPRIS_PLAYER_PREFIX, "Position");
                 Object unwrapped = this.unwrap(position);
-                if (unwrapped instanceof Number n) {
-                    this.cachedPositionSeconds = (int) (n.longValue() / 1_000_000);
+                if (unwrapped instanceof Number) {
+                    this.cachedPositionSeconds = (int) (((Number) unwrapped).longValue() / 1_000_000);
                     this.lastPositionFetchMs = System.currentTimeMillis();
                 }
             }
@@ -216,7 +215,8 @@ public class MPRISCommunicator implements Communicator {
      * @return The unwrapped object.
      */
     private Object unwrap(Object object) {
-        while (object instanceof Variant<?> v) {
+        while (object instanceof Variant<?>) {
+            Variant<?> v = (Variant<?>) object;
             object = v.getValue();
         }
         return object;
@@ -229,7 +229,9 @@ public class MPRISCommunicator implements Communicator {
      */
     private void updateMetadataCache(Object rawMetadata) {
         Object unwrapped = unwrap(rawMetadata);
-        if (!(unwrapped instanceof Map<?, ?> map)) return;
+        if (!(unwrapped instanceof Map<?, ?>)) return;
+
+        Map<?, ?> map = (Map<?, ?>) unwrapped;
 
         String title = "", artist = "", album = "", artUrl = "";
         int duration = 0;
@@ -239,15 +241,19 @@ public class MPRISCommunicator implements Communicator {
             Object value = unwrap(entry.getValue());
 
             switch (key) {
-                case "xesam:title" -> title = parseMetadataStringValue(value);
-                case "xesam:artist" -> artist = parseMetadataStringValue(value);
-                case "xesam:album" -> album = parseMetadataStringValue(value);
-                case "mpris:artUrl" -> artUrl = parseMetadataStringValue(value);
-                case "mpris:length" -> {
-                    if (value instanceof Number n) {
-                        duration = (int) (n.longValue() / 1_000_000);
+                case "xesam:title":
+                    title = parseMetadataStringValue(value); break;
+                case "xesam:artist":
+                    artist = parseMetadataStringValue(value); break;
+                case "xesam:album":
+                    album = parseMetadataStringValue(value); break;
+                case "mpris:artUrl":
+                    artUrl = parseMetadataStringValue(value); break;
+                case "mpris:length":
+                    if (value instanceof Number) {
+                        duration = (int) (((Number) value).longValue() / 1_000_000);
                     }
-                }
+                    break;
             }
         }
 
@@ -270,12 +276,13 @@ public class MPRISCommunicator implements Communicator {
      */
     private String parseMetadataStringValue(Object value) {
         if (value == null) return "";
-        if (value instanceof List<?> list) {
+        if (value instanceof List<?>) {
+            List<?> list = (List<?>) value;
             StringBuilder builder = new StringBuilder();
             for (Object item : list) {
                 Object unwrapped = unwrap(item);
                 if (unwrapped != null && !unwrapped.toString().isEmpty()) {
-                    if (!builder.isEmpty()) builder.append(", ");
+                    if (builder.length() != 0) builder.append(", ");
                     builder.append(unwrapped);
                 }
             }
@@ -286,7 +293,7 @@ public class MPRISCommunicator implements Communicator {
             for (Object item : (Object[]) value) {
                 Object unwrapped = unwrap(item);
                 if (unwrapped != null && !unwrapped.toString().isEmpty()) {
-                    if (!builder.isEmpty()) builder.append(", ");
+                    if (builder.length() != 0) builder.append(", ");
                     builder.append(unwrapped);
                 }
             }

@@ -1,12 +1,13 @@
 plugins {
     id("java")
     id("maven-publish")
+    id("io.freefair.lombok") version "9.8.0"
 }
 
 // Toolchains:
 java {
     toolchain {
-        languageVersion.set(JavaLanguageVersion.of(21))
+        languageVersion.set(JavaLanguageVersion.of(8))
     }
 }
 
@@ -16,22 +17,13 @@ repositories {
     maven { url = uri("https://jitpack.io") }
 }
 
-val annotationImplementation: Configuration by configurations.creating {
-    configurations.compileOnly.get().extendsFrom(this)
-    configurations.testCompileOnly.get().extendsFrom(this)
-    configurations.annotationProcessor.get().extendsFrom(this)
-    configurations.testAnnotationProcessor.get().extendsFrom(this)
-}
-
 dependencies {
-    implementation("se.michaelthelin.spotify:spotify-web-api-java:9.4.0")
+    implementation("se.michaelthelin.spotify:spotify-web-api-java:8.4.1")
     implementation("net.java.dev.jna:jna:5.18.1")
 
-    implementation("com.github.hypfvieh.dbus-java:dbus-java-core:dbus-java-parent-5.1.1")
-    implementation("com.github.hypfvieh.dbus-java:dbus-java-transport-jnr-unixsocket:dbus-java-parent-5.1.1")
+    implementation("com.github.hypfvieh:dbus-java:3.3.2")
 
     compileOnly("org.jetbrains:annotations:26.0.2")
-    annotationImplementation("org.projectlombok:lombok:1.18.36")
 }
 
 // Task:
@@ -49,13 +41,13 @@ publishing {
         create<MavenPublication>("mavenJava") {
             from(components["java"])
             groupId = "me.darragh"
-            artifactId = "playing-api"
+            artifactId = "playing-api-java8"
             version = project.version.toString()
 
             pom {
                 name.set("playing-api")
                 properties.set(mapOf(
-                    "java.version" to "25",
+                    "java.version" to "8",
                     "project.build.sourceEncoding" to "UTF-8",
                     "project.reporting.outputEncoding" to "UTF-8"
                 ))

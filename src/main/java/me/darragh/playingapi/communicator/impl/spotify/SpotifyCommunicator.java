@@ -17,7 +17,6 @@ import se.michaelthelin.spotify.model_objects.specification.Track;
 import se.michaelthelin.spotify.requests.authorization.authorization_code.AuthorizationCodeUriRequest;
 import se.michaelthelin.spotify.requests.authorization.authorization_code.pkce.AuthorizationCodePKCERequest;
 import se.michaelthelin.spotify.requests.data.player.GetInformationAboutUsersCurrentPlaybackRequest;
-import se.michaelthelin.spotify.requests.data.tracks.GetTrackRequest;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
