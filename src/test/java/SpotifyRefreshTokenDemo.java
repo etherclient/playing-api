@@ -1,10 +1,10 @@
+import com.wrapper.spotify.exceptions.SpotifyWebApiException;
 import me.darragh.playingapi.communicator.CommunicatorFactory;
 import me.darragh.playingapi.communicator.impl.spotify.SimpleSpotifyPageHandler;
 import me.darragh.playingapi.communicator.impl.spotify.SpotifyCommunicator;
 import me.darragh.playingapi.communicator.impl.spotify.SpotifyServerHandler;
 import me.darragh.playingapi.communicator.impl.spotify.SpotifyServerResponseState;
 import org.apache.hc.core5.http.ParseException;
-import se.michaelthelin.spotify.exceptions.SpotifyWebApiException;
 
 import javax.swing.*;
 import java.io.IOException;
@@ -30,7 +30,7 @@ public final class SpotifyRefreshTokenDemo {
         String refreshToken = null;
         Path tokenPath = Paths.get("token.txt");
         if (tokenPath.toFile().exists()) {
-            refreshToken = Files.readString(tokenPath);
+            refreshToken = new String(Files.readAllBytes(tokenPath));
         }
 
         if (refreshToken == null) {
@@ -104,6 +104,6 @@ public final class SpotifyRefreshTokenDemo {
     private static void saveRefreshToken(String refreshToken) throws IOException {
 //        System.out.println("New refresh token: " + refreshToken);
         Path tokenPath = Paths.get("token.txt");
-        Files.writeString(tokenPath, refreshToken);
+        Files.write(tokenPath, refreshToken.getBytes());
     }
 }

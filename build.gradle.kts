@@ -18,7 +18,7 @@ repositories {
 }
 
 dependencies {
-    implementation("se.michaelthelin.spotify:spotify-web-api-java:8.4.1")
+    implementation("se.michaelthelin.spotify:spotify-web-api-java:6.5.4")
     implementation("net.java.dev.jna:jna:5.18.1")
 
     implementation("com.github.hypfvieh:dbus-java:3.3.2")
