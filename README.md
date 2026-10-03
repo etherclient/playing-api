@@ -19,7 +19,7 @@ dependencies {
 }
 ```
 
-_This project is also available via. Jitpack. View more information [here](https://jitpack.io/#Fentanyl-Client/msauth)._
+_This project is also available via. Jitpack. View more information [here](https://jitpack.io/#etherclient/playing-api)._
 
 ## Usage
 
